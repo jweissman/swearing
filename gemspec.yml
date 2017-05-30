@@ -1,6 +1,6 @@
 name: swearing
-summary: "TODO: Summary"
-description: "TODO: Description"
+summary: "component ui for curses"
+description: "tiny view framework for ruby curses apps"
 license: MIT
 authors: Joseph Weissman
 email: jweissman1986@gmail.com
