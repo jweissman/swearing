@@ -6,29 +6,170 @@ require 'ostruct'
 
 require 'swearing/version'
 require 'swearing/component'
+require 'swearing/application'
 
 # a little wrapper around curses
 module Swearing
+  module Layout
+    def self.flip_orientation(mode)
+      case mode
+      when :row then :column
+      when :column then :row
+      else raise "Unknown orientation mode: #{mode} (must be :row/:column)"
+      end
+    end
+
+    def self.subdivide(n, dims:, mode:)
+      w,h = *dims
+
+      case mode
+      when :column then w / n
+      when :row then h / n
+      end
+    end
+
+    def self.layout(elements, mode:, origin: [0,0], dims:)
+      ox,oy = *origin
+      w,h = *dims
+      elements_count = elements.count
+      return elements unless elements_count > 0
+
+      share_per_container = subdivide(elements_count, dims: dims, mode: mode)
+
+      elements.map.with_index do |element, index|
+        if mode == :row
+          element._origin = [ ox, oy + (index*share_per_container) ]
+          element._dims   = [ w, share_per_container ]
+          element.contents = layout(element.contents, mode: :column, origin: element._origin, dims: element._dims) if element.contents.any?
+        elsif mode == :column
+          element._origin = [ ox + (index*share_per_container), oy ]
+          element._dims   = [ share_per_container, h ]
+          element.contents = layout(element.contents, mode: :row, origin: element._origin, dims: element._dims) if element.contents.any?
+        end
+        element
+      end
+    end
+  end
+
+  # elements are atomic things that can't be simplified, are
+  # actually renderable...
+  class Element
+    attr_accessor :_origin, :_dims
+  end
+
+  class Text < Element
+    attr_reader :value
+    def initialize(value:)
+      @value = value
+    end
+
+    def ==(other)
+      other.value == value
+    end
+
+    def inspect
+      "Text['#{value}']"
+    end
+
+    def self.[](val)
+      new value: val
+    end
+
+    def contents; [] end
+  end
+
+  class Container < Element
+    attr_accessor :contents
+
+    # for layout use only -- maybe a separate obj?
+
+    def initialize(contents:)
+      @contents = contents
+      @_origin = [0,0]
+      @_dims = [0,0]
+    end
+
+    def inspect
+      "Container[#{contents.map(&:inspect).join(';')}]"
+    end
+
+    def ==(other)
+      contents == other.contents
+    end
+
+    # def layout!(mode: :column, origin: @_origin, dims: @_dims)
+    #   # log.info "=== LAYOUT ==="
+    #   # log.info "origin: #{origin} -- dims: #{dims}"
+    #   # log.info "elements to #{mode} layout: #{elements.inspect}"
+    #   layout elements...
+    #   Layout.layout(self.contents, origin...)
+    # end
+
+    def self.[](*contents)
+      new contents: contents
+    end
+  end
+
+  ###
+
   module UI
     Label = Swearing::Component.define(
+      :label,
       properties: {
         text: {
           type: String,
           required: true
-        }
+        },
+        # x: Integer,
+        # y: Integer
       },
-      render: ->(properties) {
-        # binding.pry
-        # properties.text
-
-        # # require 'erb'
-        # name = "Rasmus"
-        template_string = properties[:text] # "My name is <%= name %>"
-        template_string % properties
-        # template = ERB.new template_string
-        # return template.result # prints "My name is Rasmus"
+      render: ->(data) {
+        template_string = data[:text]
+        interpolated = template_string % data  #$???
+        Text[interpolated] #.new(value: interpolated)
+        # x,y = data[:x], data[:y]
+        # render string at x,y
+        # [text: interpolated]
       }
     )
+
+    # Container = Swearing::Component.define(
+    #   render: ->(data, components) {
+    #     # lerp components...?
+    #     # binding.pry
+    #     # self.class.components.inject({})
+    #     # need to orient subcomponents within container space...
+    #     # 'hmmm'
+    #   }
+    # )
+  end
+
+  module Demo
+  # class DemoAppView < Swearing::UI::Container
+  # end
+    # HelloWorld = Swearing::Component.define(:hello, render: ->(*) { Text['hello there!'] })
+
+    class App < Swearing::Application
+      def view_model
+        [
+          Text['hi there'],
+          Text['welcome'],
+          Container[
+            Text['these'],
+            Text['should'],
+            Text['be in a row']
+          ]
+        ]
+          # [ HelloWorld.new ]
+
+          # [
+          #   container: [ :hello ]
+          # ]
+          # @view_model ||= Swearing::UI::Container.new(
+          #   # elements: [ Swearing::UI::Label.new(text: 'hello world') ]
+          # )
+      end
+    end
   end
 
   # class Component
